@@ -3,16 +3,16 @@
 
 #===Install packages==================
 
-install.packages("tidyverse")
-install.packages("readxl")
-install.packages("rptR")
-install.packages("lme4")
-install.packages("car")
-install.packages("stargazer")
-install.packages("ggplot2")
-install.packages("ggeffects")
-install.packages("lmerTest")
-install.packages("sjPlot")
+# install.packages("tidyverse")
+# install.packages("readxl")
+# install.packages("rptR")
+# install.packages("lme4")
+# install.packages("car")
+# install.packages("stargazer")
+# install.packages("ggplot2")
+# install.packages("ggeffects")
+# install.packages("lmerTest")
+# install.packages("sjPlot")
 
 
 #===Set working directory===
@@ -43,38 +43,58 @@ dat1<-dat1[,-c(1,6)]
 
 featherdata<-dat1[,c(1:19,23,27:37)]
 #===Convert to right data type=========
-dat2 <- dat1 %>%
-  mutate(
-    BirthDate = as.Date(BirthDate),               # Convert to date
-    BirthYear = as.factor(BirthYear),             # Convert to factor
-    OccasionDate = as.Date(OccasionDate),         # Convert to date
-    BodyMass = as.numeric(BodyMass),              # Convert to numeric
-    MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
-    RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
-    WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
-    BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
-    BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
-    SexEstimate = as.factor(SexEstimate)          # Convert to factor
-  )
-
-sum(is.na(dat1$BarbuleSUM_R2))
+# dat2 <- dat1 %>%
+#   mutate(
+#     BirthDate = as.Date(BirthDate),               # Convert to date
+#     BirthYear = as.factor(BirthYear),             # Convert to factor
+#     OccasionDate = as.Date(OccasionDate),         # Convert to date
+#     BodyMass = as.numeric(BodyMass),              # Convert to numeric
+#     MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
+#     RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
+#     WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
+#     BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
+#     BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
+#     SexEstimate = as.factor(SexEstimate)          # Convert to factor
+#   )
 
 
-featherdata<-dat1[]
+#check lifespan 
+
+lifespan<-read.csv('lifespan.csv')
+lifespan<-lifespan[,-c(1)]
+featherdata<-left_join(featherdata, lifespan, by='BirdID')
+test<-test[c('BirdID',"newlifespan",'Lifespan')]
+
 
 #=== Set status to dominant, subordinate, helper ===========
-ReproductiveStatus <- dat2$ReproductiveStatus
 
-dat2 <- dat2%>%
+test <- featherdata%>%
   mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
                            ReproductiveStatus == "BrM" ~ "Dom",
                            ReproductiveStatus == "BrU" ~ "Dom",
                            ReproductiveStatus == "H" ~ "H"))
+"%!in%"<-Negate('%in%')
 
-dat2$NewRepStatus[dat2$ReproductiveStatus %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
+test$NewRepStatus[test$ReproductiveStatus %!in% c("BrF",'BrM','BrU',"H")] <- "Sub"
 
-dat2$NewRepStatus #Check whether converted correctly > fine!
-str(dat2$NewRepStatus) #Still 397 values
+
+featherdata<-test
+
+#check avg invert 
+mean_insect<-read.csv('mean_insect_new.csv')
+
+featherdata$occasionyear<-as.numeric(str_sub(featherdata$OccasionDate, 1,4))
+avgbugs<-avgbugs%>%
+  group_by(occasionyear)%>%
+  mutate(meanbug=mean(avg_invert, na.rm=T))%>%
+  select(occasionyear, meanbug)%>%
+  unique()
+
+test<-left_join(featherdata, avgbugs, by='occasionyear')
+test<-test[c('InsectCounts', 'meanbug')]
+
+#she used one season per year
+
 
 
 #### RACHIS WIDTH #######################
