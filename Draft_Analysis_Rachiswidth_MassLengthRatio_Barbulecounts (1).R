@@ -63,7 +63,7 @@ featherdata<-dat1[,c(1:19,23,27:37)]
 lifespan<-read.csv('lifespan.csv')
 lifespan<-lifespan[,-c(1)]
 featherdata<-left_join(featherdata, lifespan, by='BirdID')
-test<-test[c('BirdID',"newlifespan",'Lifespan')]
+check<-test[c('BirdID',"newlifespan",'Lifespan')]
 
 
 #=== Set status to dominant, subordinate, helper ===========
@@ -82,18 +82,39 @@ featherdata<-test
 
 #check avg invert 
 mean_insect<-read.csv('mean_insect_new.csv')
+mean_insect<-mean_insect[,-c(1)]
+
+occasionplusfp<-read_excel('sys_OccasionPlusFieldPeriod.xlsx')
+occasionplusfp<-occasionplusfp[,c(2,3,8)]
+occasionplusfp<-unique(occasionplusfp)
+occasionplusfp<-filter(occasionplusfp, occasionplusfp$Island=='CN')
+
+er<-occasionplusfp%>%
+  group_by(OccasionDate)%>%
+  summarise(thefuck=length(FieldPeriodID))
+
+occasionplusfp$OccasionDate<-as.Date(occasionplusfp$OccasionDate, "%Y-%m-%d")
+
+featherdata$OccasionDate<-as.Date(featherdata$OccasionDate, "%Y-%m-%d")
+
+featherdata<-merge(featherdata, occasionplusfp, by.x='OccasionDate', all.x = T)
 
 featherdata$occasionyear<-as.numeric(str_sub(featherdata$OccasionDate, 1,4))
-avgbugs<-avgbugs%>%
-  group_by(occasionyear)%>%
-  mutate(meanbug=mean(avg_invert, na.rm=T))%>%
-  select(occasionyear, meanbug)%>%
-  unique()
+# avgbugs<-avgbugs%>%
+#   group_by(occasionyear)%>%
+#   mutate(meanbug=mean(avg_invert, na.rm=T))%>%
+#   select(occasionyear, meanbug)%>%
+#   unique()
 
-test<-left_join(featherdata, avgbugs, by='occasionyear')
-test<-test[c('InsectCounts', 'meanbug')]
+test<-left_join(featherdata, mean_insect, by=c('FieldPeriodID', 'occasionyear'))
+test<-test[c('InsectCounts', 'avg_invert')]
 
-#she used one season per year
+#she used specific season
+bugs2024<-read.csv('mean_insect_2024.csv')
+
+blah<-merge(bugs2024, mean_insect, by=c('occasionyear','FieldPeriodID'))
+#invert values are correct. 
+
 
 
 
@@ -101,36 +122,48 @@ test<-test[c('InsectCounts', 'meanbug')]
 
 #===Create data frame====================
 
-WidthRachis <- dat2$WidthRachis
-BirdID <- dat2$BirdID
+# WidthRachis <- dat2$WidthRachis
+# BirdID <- dat2$BirdID
 
-str(WidthRachis)
+# str(WidthRachis)
 
-hist(dat2$WidthRachis) 
+
+featherdata$WidthRachis_z<-scale(featherdata$WidthRachis)
+featherdata$WidthRachis_log<-log(featherdata$WidthRachis)
+hist(featherdata$WidthRachis_z)
+hist(featherdata$Age, breaks = 16)
+
+
+#filter out birds that are alive
+onlydead<-filter(featherdata, !is.na(featherdata$newlifespan))
+hist(onlydead$Age, breaks = 16)
+
+after1<-filter(featherdata, featherdata$Age>1)
+hist(after1$Age, breaks = 16)
+hist(featherdata$newlifespan)
+
+#data is even more skewed towards age 1. 
+
 
 
 #===lme for the effect of age on rachis width============
 
-dat2$SexEstimate=ifelse(dat2$SexEstimate==0,"F","M")
-names(dat2)[18]="Sex"
+# dat2$SexEstimate=ifelse(dat2$SexEstimate==0,"F","M")
+# names(dat2)[18]="Sex"
+
+featherdata$SexEstimate<-as.factor(featherdata$SexEstimate)
+
+plot(featherdata$Age, featherdata$WidthRachis_z)
+var(featherdata$WidthRachis)
+
+library(MCMCglmm)
 
 #Model 1: only body mass
-mixed.lmer_WidthRachis1 <- lmer(WidthRachis ~
-                                   Age +
-                                   I(Age^2) +              #age squared
-                                   Age*Sex +               #interaction of age and sex
-                                   I(Age^2)*Sex + 
-                                   Lifespan +
-                                   Sex +
-                                   BodyMass +
-                                   #BodymassTarsus +  
-                                   #RightTarsus +
-                                   NewRepStatus +
-                                   InsectCounts +
-                                   Tailmoult +
-                                   (1 | BirdID) +
-                                   (1 | BirthYear),        #Cohort
-                                 data = dat2)
+mixed.lmer_WidthRachis1 <- lmer(WidthRachis_z ~ Age*SexEstimate + I(Age^2)*SexEstimate + 
+                                  newlifespan + SexEstimate + BodymassTarsus + 
+                                  NewRepStatus + InsectCounts + Tailmoult +
+                                   (1 | BirdID) + (1 | BirthYear), 
+                                 data = featherdata)
 
 #Model 2: only tarsus length
 mixed.lmer_WidthRachis2 <- lmer(WidthRachis ~
@@ -152,38 +185,19 @@ mixed.lmer_WidthRachis2 <- lmer(WidthRachis ~
 
 #Model 3: both body mass and tarsus length
 mixed.lmer_WidthRachis3 <- lmer(WidthRachis ~
-                                  Age +
-                                  I(Age^2) +              #age squared
-                                  Age*Sex +               #interaction of age and sex
-                                  I(Age^2)*Sex + 
-                                  Lifespan +
-                                  Sex +
-                                  BodyMass +
-                                  RightTarsus +
+                                  Age + I(Age^2) +Age*Sex + I(Age^2)*Sex + 
+                                  Lifespan + Sex + BodyMass + RightTarsus +
                                   #BodymassTarsus +  
-                                  NewRepStatus +
-                                  InsectCounts +
-                                  Tailmoult +
-                                  (1 | BirdID) +
-                                  (1 | BirthYear),        #Cohort
+                                  NewRepStatus + InsectCounts + Tailmoult +
+                                  (1 | BirdID) + (1 | BirthYear),
                                 data = dat2)
 
 #Model 4: with body mass/tarsus length ratio
 mixed.lmer_WidthRachis4 <- lmer(WidthRachis ~
-                                  Age +
-                                  I(Age^2) +              #age squared
-                                  Age*Sex +               #interaction of age and sex
-                                  I(Age^2)*Sex + 
-                                  Lifespan +
-                                  Sex +
-                                  #BodyMass +
-                                  #RightTarsus +
-                                  BodymassTarsus +  
-                                  NewRepStatus +
-                                  InsectCounts +
-                                  Tailmoult +
-                                  (1 | BirdID) +
-                                  (1 | BirthYear),        #Cohort
+                                  Age + I(Age^2) +Age*Sex + I(Age^2)*Sex + 
+                                  Lifespan + Sex + #BodyMass +#RightTarsus +
+                                  BodymassTarsus +NewRepStatus + InsectCounts +
+                                  Tailmoult + (1 | BirdID) +(1 | BirthYear),
                                 data = dat2)
 
 lrtest(mixed.lmer_WidthRachis1, mixed.lmer_WidthRachis2, mixed.lmer_WidthRachis3, mixed.lmer_WidthRachis4)
@@ -426,20 +440,11 @@ hist(datF2$WidthRachis)
 
 #===Model MALES==========================================
 mixed.lmer_WidthRachisM <- lmer(WidthRachis ~
-                                  Age +
-                                  I(Age^2) +              #age squared
-                                  #Age*Sex +              #interaction of age and sex
-                                  #I(Age^2)*Sex + 
-                                  Lifespan +
-                                  #Sex +
-                                  #BodyMass +
-                                  RightTarsus +
-                                  #BodymassTarsus +  
-                                  NewRepStatus +
-                                  InsectCounts +
-                                  Tailmoult +
-                                  (1 | BirdID) +
-                                  (1 | BirthYear),        #Cohort
+                                  Age + I(Age^2) +#Age*Sex + #I(Age^2)*Sex + 
+                                  Lifespan + #Sex +
+                                  #BodyMass + RightTarsus + #BodymassTarsus +  
+                                  NewRepStatus + InsectCounts +
+                                  Tailmoult + (1 | BirdID) + (1 | BirthYear),
                                 data = datM2)
 
 #Plot to check assumptions
@@ -865,7 +870,7 @@ pred.mm2 <- ggpredict(mixed.lmer_MassLengthRatio2, terms = c("Age"))  # this giv
 #####===Read data===######
 
 
-dat3 <- read_excel("2024-01-25_Final only barbules.xlsx")
+barbuledata <- read_excel("2024-01-25_Final only barbules.xlsx")
 
 
 #===Convert to right data type=========
