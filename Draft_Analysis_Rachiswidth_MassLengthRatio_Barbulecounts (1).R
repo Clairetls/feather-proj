@@ -41,7 +41,8 @@ library(sjPlot)
 dat1 <- read_excel("2024-01-25_FinalDataSet_Collection.xlsx")
 dat1<-dat1[,-c(1,6)]
 
-featherdata<-dat1[,c(1:19,23,27:37)]
+feather_nobarbs<-dat1[,c(1:17,19,23,27:32)]
+feather_withbarbs<-dat1[,c(1:17,19,23,27:35)]
 #===Convert to right data type=========
 # dat2 <- dat1 %>%
 #   mutate(
@@ -62,60 +63,124 @@ featherdata<-dat1[,c(1:19,23,27:37)]
 
 lifespan<-read.csv('lifespan.csv')
 lifespan<-lifespan[,-c(1)]
-featherdata<-left_join(featherdata, lifespan, by='BirdID')
-check<-test[c('BirdID',"newlifespan",'Lifespan')]
+feather_nobarbs<-left_join(feather_nobarbs, lifespan, by='BirdID')
+check<-feather_nobarbs[c('BirdID',"newlifespan",'Lifespan')]
+
+#values not the same. use newlifespan. 
+#Elizabeth used last obs date? 
+
+dups<-feather_nobarbs%>%group_by(BirdID, OccasionDate)%>%summarise(count=n())
+#found two feathers with duplicate measurements in the database 
+
+#average both 
+
+colnames(feather_nobarbs)[c(21,22,24,25)]<-c('feathermass_g','feathermass_mg','feathervanelength_mm','middlefeather')
+
+
+
+dups<-feather_nobarbs[feather_nobarbs$BirdID %in% c(6191,6863),]
+test<-feather_nobarbs[-c(147,288),]
+
+#the BTO ring was entered wrongly for 2 repeat feather measurements and quite a bit off 
+#now removed. 
+
+dups<-test%>%group_by(BirdID, OccasionDate)%>%summarise(count=n())
+
+feather_nobarbs<-test
+
+
+breedstat<-read.csv('breedstatuses_20112024.csv', stringsAsFactors = F)
+breedstat<-breedstat[,-c(1,9)]
+
+#check reproductive status 
+occasionfp<-readxl::read_excel('occasionfp.xlsx')
+occasionfp$OccasionDate<-as.Date(occasionfp$OccasionDate, '%Y-%m-%d')
+feather_nobarbs$OccasionDate<-as.Date(feather_nobarbs$OccasionDate, '%Y-%m-%d')
+#merge for occasioinID 
+test<-left_join(feather_nobarbs, occasionfp, by=c('BirdID','OccasionDate'))
+
+feather_nobarbs<-test[-c(349,355),]
+
+dups<-feather_nobarbs%>%group_by(BirdID, OccasionDate)%>%summarise(count=n())
+
+#merge repro status 
+
+
+stat<-left_join(feather_nobarbs, breedstat, by=c('BirdID', 'FieldPeriodID','Island'))
+check<-stat[,c("BirdID", 'FieldPeriodID', 'Status','ReproductiveStatus')]
+check$good<-(check$Status==check$ReproductiveStatus)
+
+
+feather_nobarbs<-stat
+#few reproductive statuses wrong 
+#use status 
 
 
 #=== Set status to dominant, subordinate, helper ===========
 
-test <- featherdata%>%
-  mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
-                           ReproductiveStatus == "BrM" ~ "Dom",
-                           ReproductiveStatus == "BrU" ~ "Dom",
-                           ReproductiveStatus == "H" ~ "H"))
+feather_nobarbs <- feather_nobarbs%>%
+  mutate(NewRepStatus = case_when(Status == "BrF" ~ "Dom",
+                                  Status == "BrM" ~ "Dom",
+                                  Status == "BrU" ~ "Dom",
+                                  Status == "H" ~ "H"))
 "%!in%"<-Negate('%in%')
 
-test$NewRepStatus[test$ReproductiveStatus %!in% c("BrF",'BrM','BrU',"H")] <- "Sub"
+feather_nobarbs$NewRepStatus[feather_nobarbs$Status %!in% c("BrF",'BrM','BrU',"H")] <- "Sub"
 
-
-featherdata<-test
 
 #check avg invert 
 mean_insect<-read.csv('mean_insect_new.csv')
 mean_insect<-mean_insect[,-c(1)]
 
-occasionplusfp<-read_excel('sys_OccasionPlusFieldPeriod.xlsx')
-occasionplusfp<-occasionplusfp[,c(2,3,8)]
-occasionplusfp<-unique(occasionplusfp)
-occasionplusfp<-filter(occasionplusfp, occasionplusfp$Island=='CN')
+# occasionplusfp<-read_excel('sys_OccasionPlusFieldPeriod.xlsx')
+# occasionplusfp<-occasionplusfp[,c(2,3,8)]
+# occasionplusfp<-unique(occasionplusfp)
+# occasionplusfp<-filter(occasionplusfp, occasionplusfp$Island=='CN')
+# er<-occasionplusfp%>%
+#   group_by(OccasionDate)%>%
+#   summarise(thefuck=length(FieldPeriodID))
 
-er<-occasionplusfp%>%
-  group_by(OccasionDate)%>%
-  summarise(thefuck=length(FieldPeriodID))
+bug<-left_join(feather_nobarbs, mean_insect, by='FieldPeriodID')
+check<-bug[,c('InsectCounts','avg_invert')]
+check$good<-(check$InsectCounts==check$avg_invert)
 
-occasionplusfp$OccasionDate<-as.Date(occasionplusfp$OccasionDate, "%Y-%m-%d")
 
-featherdata$OccasionDate<-as.Date(featherdata$OccasionDate, "%Y-%m-%d")
-
-featherdata<-merge(featherdata, occasionplusfp, by.x='OccasionDate', all.x = T)
-
-featherdata$occasionyear<-as.numeric(str_sub(featherdata$OccasionDate, 1,4))
+# occasionplusfp$OccasionDate<-as.Date(occasionplusfp$OccasionDate, "%Y-%m-%d")
+# 
+# featherdata$OccasionDate<-as.Date(featherdata$OccasionDate, "%Y-%m-%d")
+# 
+# featherdata<-merge(featherdata, occasionplusfp, by.x='OccasionDate', all.x = T)
+# 
+# featherdata$occasionyear<-as.numeric(str_sub(featherdata$OccasionDate, 1,4))
 # avgbugs<-avgbugs%>%
 #   group_by(occasionyear)%>%
 #   mutate(meanbug=mean(avg_invert, na.rm=T))%>%
 #   select(occasionyear, meanbug)%>%
 #   unique()
 
-test<-left_join(featherdata, mean_insect, by=c('FieldPeriodID', 'occasionyear'))
-test<-test[c('InsectCounts', 'avg_invert')]
+# test<-left_join(featherdata, mean_insect, by=c('FieldPeriodID', 'occasionyear'))
+# test<-test[c('InsectCounts', 'avg_invert')]
+# 
+# #she used specific season
+# bugs2024<-read.csv('mean_insect_2024.csv')
+# 
+# blah<-merge(bugs2024, mean_insect, by=c('occasionyear','FieldPeriodID'))
+# #invert values are correct. 
 
-#she used specific season
-bugs2024<-read.csv('mean_insect_2024.csv')
-
-blah<-merge(bugs2024, mean_insect, by=c('occasionyear','FieldPeriodID'))
-#invert values are correct. 
+feather_nobarbs<-bug
 
 
+#check sex estimate
+
+sex<-readxl::read_excel('sys_SexEstimates.xlsx')
+
+sex<-sex[,c(1:2)]
+colnames(sex)<-c('BirdID','SexEst')
+testsex<-left_join(feather_nobarbs, sex, by='BirdID')
+check<-testsex[,c('BirdID','SexEstimate','SexEst')]
+check$good<-(check$SexEst==check$SexEstimate)
+
+#sex is correct 
 
 
 #### RACHIS WIDTH #######################
@@ -127,20 +192,23 @@ blah<-merge(bugs2024, mean_insect, by=c('occasionyear','FieldPeriodID'))
 
 # str(WidthRachis)
 
+View(feather_nobarbs)
 
-featherdata$WidthRachis_z<-scale(featherdata$WidthRachis)
-featherdata$WidthRachis_log<-log(featherdata$WidthRachis)
-hist(featherdata$WidthRachis_z)
-hist(featherdata$Age, breaks = 16)
+
+feather_nobarbs$WidthRachis_z<-scale(feather_nobarbs$WidthRachis)
+feather_nobarbs$WidthRachis_log<-log(feather_nobarbs$WidthRachis)
+hist(feather_nobarbs$WidthRachis_z, breaks=30)   #slightly left skewed?
+hist(feather_nobarbs$WidthRachis_log)
+hist(feather_nobarbs$Age, breaks = 16)
 
 
 #filter out birds that are alive
-onlydead<-filter(featherdata, !is.na(featherdata$newlifespan))
+onlydead<-filter(feather_nobarbs, !is.na(feather_nobarbs$newlifespan))
 hist(onlydead$Age, breaks = 16)
 
-after1<-filter(featherdata, featherdata$Age>1)
+after1<-filter(feather_nobarbs, feather_nobarbs$Age>1)
 hist(after1$Age, breaks = 16)
-hist(featherdata$newlifespan)
+hist(feather_nobarbs$newlifespan)
 
 #data is even more skewed towards age 1. 
 
@@ -151,11 +219,18 @@ hist(featherdata$newlifespan)
 # dat2$SexEstimate=ifelse(dat2$SexEstimate==0,"F","M")
 # names(dat2)[18]="Sex"
 
-featherdata$SexEstimate<-as.factor(featherdata$SexEstimate)
+feather_nobarbs$SexEstimate<-as.factor(feather_nobarbs$SexEstimate)
 
-plot(featherdata$Age, featherdata$WidthRachis_z)
-var(featherdata$WidthRachis)
 
+library(cowplot)
+rachiswidthplot<-ggplot(feather_nobarbs, aes(x=Age, y=WidthRachis))+geom_point()+
+  stat_smooth(method='lm')+theme_cowplot()+ylab('Rachis Width (mm)')
+rachiswidthplot
+
+
+var(feather_nobarbs$WidthRachis)
+
+library(lme4)
 library(MCMCglmm)
 
 #Model 1: only body mass
@@ -166,13 +241,10 @@ mixed.lmer_WidthRachis1 <- lmer(WidthRachis_z ~ Age*SexEstimate + I(Age^2)*SexEs
                                  data = featherdata)
 
 #Model 2: only tarsus length
-mixed.lmer_WidthRachis2 <- lmer(WidthRachis ~
-                                  Age +
-                                  I(Age^2) +              #age squared
-                                  Age*Sex +               #interaction of age and sex
-                                  I(Age^2)*Sex + 
-                                  Lifespan +
-                                  Sex +
+mixed.lmer_WidthRachis2 <- lmer(WidthRachis ~ Age*SexEstimate +               #interaction of age and sex
+                                  I(Age^2)*SexEstimate + 
+                                  newlifespan +
+                                  SexEstimate +
                                   #BodyMass +
                                   RightTarsus +
                                   #BodymassTarsus +  
@@ -181,65 +253,144 @@ mixed.lmer_WidthRachis2 <- lmer(WidthRachis ~
                                   Tailmoult +
                                   (1 | BirdID) +
                                   (1 | BirthYear),        #Cohort
-                                data = dat2)
+                                data = feather_nobarbs)
 
+
+summary(mixed.lmer_WidthRachis2)
 #Model 3: both body mass and tarsus length
-mixed.lmer_WidthRachis3 <- lmer(WidthRachis ~
-                                  Age + I(Age^2) +Age*Sex + I(Age^2)*Sex + 
+mixed.lmer_WidthRachis3 <- lmer(WidthRachis ~ Age + I(Age^2) +Age*Sex + I(Age^2)*Sex + 
                                   Lifespan + Sex + BodyMass + RightTarsus +
                                   #BodymassTarsus +  
                                   NewRepStatus + InsectCounts + Tailmoult +
                                   (1 | BirdID) + (1 | BirthYear),
-                                data = dat2)
+                                data = feather_nobarbs)
 
 #Model 4: with body mass/tarsus length ratio
-mixed.lmer_WidthRachis4 <- lmer(WidthRachis ~
-                                  Age + I(Age^2) +Age*Sex + I(Age^2)*Sex + 
-                                  Lifespan + Sex + #BodyMass +#RightTarsus +
-                                  BodymassTarsus +NewRepStatus + InsectCounts +
-                                  Tailmoult + (1 | BirdID) +(1 | BirthYear),
-                                data = dat2)
+mixed.lmer_WidthRachis4 <- lmer(WidthRachis_z ~ Age*SexEstimate + I(Age^2)*SexEstimate + 
+                                  newlifespan + SexEstimate +  BodymassTarsus +NewRepStatus + avg_invert +
+                                  Tailmoult +(1|BirdID)+(1|BirthYear),
+                                data = feather_nobarbs)
+
+
+summary(mixed.lmer_WidthRachis4)
+
+
+tab_model(mixed.lmer_WidthRachis4, show.df = T)
+library(jtools)
+jtools::export_summs(mixed.lmer_WidthRachis4)
 
 lrtest(mixed.lmer_WidthRachis1, mixed.lmer_WidthRachis2, mixed.lmer_WidthRachis3, mixed.lmer_WidthRachis4)
+
+
+#remove interactions to test main effects 
+
+#remove square interaction
+RachWidth_5 <- lmer(WidthRachis_z ~ Age + I(Age^2) +Age*SexEstimate + 
+                                  newlifespan + SexEstimate +  BodymassTarsus +NewRepStatus + avg_invert +
+                                  Tailmoult +(1|BirdID)+(1|BirthYear),
+                                data = feather_nobarbs)
+
+
+summary(RachWidth_5)
+
+
+tab_model(RachWidth_5, show.df = T)
+
+
+#remove both interactions
+RachWidth_6 <- lmer(WidthRachis_z ~ Age + I(Age^2) +
+                      newlifespan + SexEstimate +  BodymassTarsus +NewRepStatus + avg_invert +
+                      Tailmoult +(1|BirdID)+(1|BirthYear),
+                    data = feather_nobarbs)
+
+
+summary(RachWidth_6)
+
+tab_model(RachWidth_6, show.df = T)
+tab_model(mixed.lmer_WidthRachis4,RachWidth_5, RachWidth_6, 
+          show.se = T,show.df = T, show.est = T,digits = 4)
+
+library(modelsummary)
+modelsummary(RachWidth_final, output='table.html')
+
+#############
+RachWidth_final <- lmer(WidthRachis_z ~ Age + newlifespan + SexEstimate +  BodymassTarsus
+                        +NewRepStatus + avg_invert +
+                                Tailmoult +(1|BirdID)+(1|BirthYear),
+                              data = feather_nobarbs)
+
+
+summary(RachWidth_final)
+
+
+tab_model(RachWidth_final, show.df = T)
+
+feather_nobarbs_mc<-na.omit(feather_nobarbs)
+
+
+library(brms)
+
+prior<-list()
+
+RachWidth_mcmc <- MCMCglmm(WidthRachis ~ Age + I(Age^2) +newlifespan + SexEstimate +
+                        BodymassTarsus +NewRepStatus + avg_invert +Tailmoult, 
+                        random= ~BirdID+BirthYear,
+                      data = feather_nobarbs_mc, family='gaussian',
+                      nitt = 25000, burnin = 2000, thin = 10)
+
+
+RachWidth_brm <- brm(WidthRachis ~ Age + I(Age^2) +newlifespan + SexEstimate +
+                             BodymassTarsus +NewRepStatus + avg_invert +Tailmoult + (1|BirdID)+(1|BirthYear),
+                        data = feather_nobarbs, family=gaussian(),
+                      iter = 50000, thin = 10)
+
+
+summary(RachWidth_mcmc)
+plot(RachWidth_mcmc)
+
+
 
 #  #Df LogLik Df   Chisq Pr(>Chisq)    
 # 1  15 574.52                          
 # 2  15 569.02  0 10.9999    < 2e-16 *** >> choose model 2, which is most significant, thus gives best prediction
 # 3  16 570.14  1  2.2322    0.13516    
 # 4  15 573.23 -1  6.1894    0.01285 *  
+library(car)
+library(DHARMa)
 
-
+simulateResiduals(RachWidth_final, plot = T)
+vif(RachWidth_final)
+plotResiduals(resids)
+plot(mixed.lmer_WidthRachis4)
 #Check colinearity
-vif(mixed.lmer_WidthRachis2) # > fine (age and interaction effects are, but thats logical: they are correlated)
+vif(mixed.lmer_WidthRachis4) # > fine (age and interaction effects are, but thats logical: they are correlated)
 
 #Plot to check assumptions
-plot(mixed.lmer_WidthRachis2) #> fine (checked one outlier, was fine: old & light bird)
+plot(RachWidth_final) #> fine (checked one outlier, was fine: old & light bird)
 
 #and qqplot
-qqnorm(resid(mixed.lmer_WidthRachis2))
-qqline(resid(mixed.lmer_WidthRachis2))  # good enough
+qqnorm(resid(RachWidth_final))
+qqline(resid(RachWidth_final))  # good enough
 
 
-Anova(mixed.lmer_WidthRachis2)
+summary(mixed.lmer_WidthRachis4)
 
 ## OUTPUT:
 #
 # Analysis of Deviance Table (Type II Wald chisquare tests)
 # 
 # Response: WidthRachis
-# Chisq Df Pr(>Chisq)   
-# Age          0.0804  1   0.776699   
-# I(Age^2)     0.3728  1   0.541486   
-# Sex          9.1903  1   0.002433 **
-# Lifespan     0.8330  1   0.361405   
-# RightTarsus  2.0134  1   0.155911   
-# NewRepStatus 3.3265  2   0.189523   
-# InsectCounts 0.3036  1   0.581655   
-# Tailmoult    3.7956  1   0.051388 . 
-# Age:Sex      4.7548  1   0.029216 * 
-# I(Age^2):Sex 7.0852  1   0.007772 **
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# Chisq Df Pr(>Chisq)    
+# Age                   4.9490  1  0.0261051 *  
+# I(Age^2)              0.9229  1  0.3367193    
+# SexEstimate          13.2884  1  0.0002671 ***
+# newlifespan           5.0225  1  0.0250200 *  
+# BodymassTarsus        2.6335  1  0.1046320    
+# NewRepStatus          5.4316  2  0.0661520 .  
+# avg_invert            0.2053  1  0.6504611    
+# Tailmoult             8.9253  1  0.0028125 ** 
+# Age:SexEstimate       0.8192  1  0.3654134    
+# I(Age^2):SexEstimate  0.8300  1  0.3622870    
 
 
 mixed.lmer_WidthRachis2
@@ -332,18 +483,17 @@ summary(mixed.lmer_WidthRachis2)
 ### Plot overall predictions for the model: 
 
 # Extract the prediction data frame
-pred.mm <- ggpredict(mixed.lmer_WidthRachis2, terms = c("Age"))  # this gives overall predictions for the model
+pred.mm <- ggpredict(RachWidth_final, terms = c("Age"))  # this gives overall predictions for the model
 
 # Plot the predictions 
 (ggplot(pred.mm) + 
     geom_line(aes(x = x, y = predicted)) +          # slope
     geom_ribbon(aes(x = x, ymin = predicted - std.error, ymax = predicted + std.error), 
                 fill = "lightgrey", alpha = 0.5) +  # error band
-    geom_point(data = dat2,                      # adding the raw data (scaled values)
-               aes(x = Age, y = WidthRachis, colour = Sex)) + 
-    labs(x = "Age", y = "Rachis Width", 
-         title = "Title") + 
-    theme_minimal()
+    geom_point(data = feather_nobarbs,    # adding the raw data 
+               aes(x = Age, y = WidthRachis_z)) + 
+    labs(x = "Age", y = "Rachis Width (scaled)") + 
+    theme_cowplot()
 )
 
 ### Plot both datapoints and model predictions for both sexes in 1 plot
@@ -364,63 +514,63 @@ datM <- read_excel("2024-01-25_Final only males.xlsx")
 datF <- read_excel("2024-01-25_Final only females.xlsx")
 
 
-#===Convert to right data type=========
-datM2 <- datM %>%
-  mutate(
-    BirthDate = as.Date(BirthDate),               # Convert to date
-    BirthYear = as.factor(BirthYear),             # Convert to factor
-    OccasionDate = as.Date(OccasionDate),         # Convert to date
-    BodyMass = as.numeric(BodyMass),              # Convert to numeric
-    MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
-    RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
-    WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
-    BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
-    BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
-    SexEstimate = as.factor(SexEstimate)          # Convert to factor
-  )
-
-datF2 <- datF %>%
-  mutate(
-    BirthDate = as.Date(BirthDate),               # Convert to date
-    BirthYear = as.factor(BirthYear),             # Convert to factor
-    OccasionDate = as.Date(OccasionDate),         # Convert to date
-    BodyMass = as.numeric(BodyMass),              # Convert to numeric
-    MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
-    RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
-    WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
-    BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
-    BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
-    SexEstimate = as.factor(SexEstimate)          # Convert to factor
-  )
-
-#=== Set status to dominant, subordinate, helper ===========
-#For the male data:
-ReproductiveStatus <- datM2$ReproductiveStatus
-
-datM2 <- datM2%>%
-  mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
-                                  ReproductiveStatus == "BrM" ~ "Dom",
-                                  ReproductiveStatus == "BrU" ~ "Dom",
-                                  ReproductiveStatus == "H" ~ "H"))
-
-datM2$NewRepStatus[datM2$ReproductiveStatus %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
-
-datM2$NewRepStatus #Check whether converted correctly > fine!
-str(datM2$NewRepStatus) #Still 238 values
-
-#For the female data: 
-ReproductiveStatus <- datF2$ReproductiveStatus
-
-datF2 <- datF2%>%
-  mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
-                                  ReproductiveStatus == "BrM" ~ "Dom",
-                                  ReproductiveStatus == "BrU" ~ "Dom",
-                                  ReproductiveStatus == "H" ~ "H"))
-
-datF2$NewRepStatus[datF2$ReproductiveStatus %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
-
-datF2$NewRepStatus #Check whether converted correctly > fine!
-str(datF2$NewRepStatus) #Still 159 values
+# #===Convert to right data type=========
+# datM2 <- datM %>%
+#   mutate(
+#     BirthDate = as.Date(BirthDate),               # Convert to date
+#     BirthYear = as.factor(BirthYear),             # Convert to factor
+#     OccasionDate = as.Date(OccasionDate),         # Convert to date
+#     BodyMass = as.numeric(BodyMass),              # Convert to numeric
+#     MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
+#     RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
+#     WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
+#     BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
+#     BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
+#     SexEstimate = as.factor(SexEstimate)          # Convert to factor
+#   )
+# 
+# datF2 <- datF %>%
+#   mutate(
+#     BirthDate = as.Date(BirthDate),               # Convert to date
+#     BirthYear = as.factor(BirthYear),             # Convert to factor
+#     OccasionDate = as.Date(OccasionDate),         # Convert to date
+#     BodyMass = as.numeric(BodyMass),              # Convert to numeric
+#     MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
+#     RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
+#     WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
+#     BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
+#     BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
+#     SexEstimate = as.factor(SexEstimate)          # Convert to factor
+#   )
+# 
+# #=== Set status to dominant, subordinate, helper ===========
+# #For the male data:
+# ReproductiveStatus <- datM2$ReproductiveStatus
+# 
+# datM2 <- datM2%>%
+#   mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
+#                                   ReproductiveStatus == "BrM" ~ "Dom",
+#                                   ReproductiveStatus == "BrU" ~ "Dom",
+#                                   ReproductiveStatus == "H" ~ "H"))
+# 
+# datM2$NewRepStatus[datM2$ReproductiveStatus %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
+# 
+# datM2$NewRepStatus #Check whether converted correctly > fine!
+# str(datM2$NewRepStatus) #Still 238 values
+# 
+# #For the female data: 
+# ReproductiveStatus <- datF2$ReproductiveStatus
+# 
+# datF2 <- datF2%>%
+#   mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
+#                                   ReproductiveStatus == "BrM" ~ "Dom",
+#                                   ReproductiveStatus == "BrU" ~ "Dom",
+#                                   ReproductiveStatus == "H" ~ "H"))
+# 
+# datF2$NewRepStatus[datF2$ReproductiveStatus %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
+# 
+# datF2$NewRepStatus #Check whether converted correctly > fine!
+# str(datF2$NewRepStatus) #Still 159 values
 
 
 #===Create data frame====================
@@ -436,16 +586,30 @@ str(WidthRachisF)
 hist(datF2$WidthRachis) 
 
 
+
+nobarbs_f<-filter(feather_nobarbs, feather_nobarbs$SexEstimate==0)
+nobarbs_m<-filter(feather_nobarbs, feather_nobarbs$SexEstimate==1)
+
+
+nobarbs_f$WidthRachis_z<-scale(nobarbs_f$WidthRachis)
+nobarbs_m$WidthRachis_z<-scale(nobarbs_m$WidthRachis)
+
+
 #===lme for the effect of age on rachis width============
 
 #===Model MALES==========================================
-mixed.lmer_WidthRachisM <- lmer(WidthRachis ~
-                                  Age + I(Age^2) +#Age*Sex + #I(Age^2)*Sex + 
-                                  Lifespan + #Sex +
-                                  #BodyMass + RightTarsus + #BodymassTarsus +  
-                                  NewRepStatus + InsectCounts +
+mixed.lmer_WidthRachisM <- lmer(WidthRachis_z ~
+                                  Age + I(Age^2) + newlifespan + BodymassTarsus +  
+                                  NewRepStatus + avg_invert +
                                   Tailmoult + (1 | BirdID) + (1 | BirthYear),
-                                data = datM2)
+                                data = nobarbs_m)
+
+summary(mixed.lmer_WidthRachisM)
+tab_model(mixed.lmer_WidthRachisM)
+
+simulateResiduals(mixed.lmer_WidthRachisM, plot=T)
+#residuals are okay
+
 
 #Plot to check assumptions
 plot(mixed.lmer_WidthRachisM) #Fine
@@ -519,23 +683,22 @@ summary(mixed.lmer_WidthRachisM)
 
 
 #===Model FEMALES======================================
-mixed.lmer_WidthRachisF <- lmer(WidthRachis ~
-                                  Age +
-                                  I(Age^2) +              #age squared
-                                  #Age*Sex +              #interaction of age and sex
-                                  #I(Age^2)*Sex + 
-                                  Lifespan +
-                                  #Sex +
-                                  #BodyMass +
-                                  RightTarsus +
-                                  #BodymassTarsus +  
-                                  NewRepStatus +
+mixed.lmer_WidthRachisF <- lmer(WidthRachis_z ~ Age + newlifespan +
+                                  BodymassTarsus +NewRepStatus +
                                   InsectCounts +
                                   Tailmoult +
                                   (1 | BirdID) +
                                   (1 | BirthYear),        #Cohort
-                                data = datF2)
+                                data = nobarbs_f)
 
+
+
+rachwidth_fem <- lm(WidthRachis_z ~ Age + I(Age^2), data = nobarbs_f)
+
+summary(mixed.lmer_WidthRachisF)
+summary(rachwidth_fem)
+
+simulateResiduals(mixed.lmer_WidthRachisF, plot=T)
 
 #Plot to check assumptions
 plot(mixed.lmer_WidthRachisF) #Fine
@@ -559,6 +722,8 @@ Anova(mixed.lmer_WidthRachisF)
 mixed.lmer_WidthRachisF
 
 summary(mixed.lmer_WidthRachisF)
+
+#very different sample size??? 
 # Linear mixed model fit by REML. t-tests use Satterthwaite's method ['lmerModLmerTest']
 # Formula: WidthRachis ~ Age + I(Age^2) + Lifespan + RightTarsus + NewRepStatus +  
 #     InsectCounts + Tailmoult + (1 | BirdID) + (1 | BirthYear)
@@ -640,6 +805,9 @@ pred.mm <- ggpredict(mixed.lmer_WidthRachisF, terms = c("Age"))  # this gives ov
 
 
 
+ggplot(feather_nobarbs, aes(x=Age, y=WidthRachis, colour=SexEstimate))+
+  geom_point()+stat_smooth(method='lm')
+
 
 #================================================
 
@@ -655,47 +823,83 @@ BirdID <- dat2$BirdID
 
 str(MassLengthRatio)
 
-hist(MassLengthRatio) #quite normally distributed (only some very high numbers)
+hist(feather_nobarbs$MassLengthRatio, breaks = 8) #quite normally distributed (only some very high numbers)
 
+
+length(unique(feather_nobarbs$BirdID))
 
 
 #===lme for the effect of age on mass/length ratio============
 
 #Model 1: only body mass
-mixed.lmer_MassLengthRatio1 <- lmer(MassLengthRatio ~
-                                  Age +
-                                  I(Age^2) +              #age squared
-                                  Age*Sex +               #interaction of age and sex
-                                  I(Age^2)*Sex + 
-                                  Lifespan +
-                                  Sex +
-                                  BodyMass +
-                                  #BodymassTarsus +  
-                                  #RightTarsus +
-                                  NewRepStatus +
-                                  InsectCounts +
-                                  Tailmoult +
-                                  (1 | BirdID) +
-                                  (1 | BirthYear),        #Cohort
-                                data = dat2)
+# mixed.lmer_MassLengthRatio1 <- lmer(MassLengthRatio ~
+#                                   Age +
+#                                   I(Age^2) +              #age squared
+#                                   Age*Sex +               #interaction of age and sex
+#                                   I(Age^2)*Sex + 
+#                                   Lifespan +
+#                                   Sex +
+#                                   BodyMass +
+#                                   #BodymassTarsus +  
+#                                   #RightTarsus +
+#                                   NewRepStatus +
+#                                   InsectCounts +
+#                                   Tailmoult +
+#                                   (1 | BirdID) +
+#                                   (1 | BirthYear),        #Cohort
+#                                 data = dat2)
 
 #Model 2: with body mass/tarsus length ratio
-mixed.lmer_MassLengthRatio2 <- lmer(MassLengthRatio ~
+m2l_fullmod <- lmer(MassLengthRatio ~
                                   Age +
                                   I(Age^2) +              #age squared
-                                  Age*Sex +               #interaction of age and sex
-                                  I(Age^2)*Sex + 
-                                  Lifespan +
-                                  Sex +
-                                  #BodyMass +
-                                  #RightTarsus +
+                                  Age*SexEstimate +           
+                                  I(Age^2)*SexEstimate + 
+                                  newlifespan +
+                                  SexEstimate +
                                   BodymassTarsus +  
                                   NewRepStatus +
                                   InsectCounts +
                                   Tailmoult +
                                   (1 | BirdID) +
                                   (1 | BirthYear),        #Cohort
-                                data = dat2)
+                                data = feather_nobarbs)
+
+summary(m2l_fullmod)
+
+m2l_mod2 <- lmer(MassLengthRatio ~ Age +
+                      I(Age^2) +              #age squared
+                      Age*SexEstimate +           
+                      newlifespan + SexEstimate +
+                      BodymassTarsus +  NewRepStatus +
+                      InsectCounts +Tailmoult +
+                      (1 | BirdID) +(1 | BirthYear),        #Cohort
+                    data = feather_nobarbs)
+
+summary(m2l_mod2)
+
+m2l_mod3 <- lmer(MassLengthRatio ~ Age +
+                   I(Age^2) +              #age squared
+                   newlifespan + SexEstimate +
+                   BodymassTarsus +  NewRepStatus +
+                   InsectCounts +Tailmoult +
+                   (1 | BirdID) +(1 | BirthYear),        #Cohort
+                 data = feather_nobarbs)
+
+summary(m2l_mod3)
+
+
+m2l_mod4 <- lmer(MassLengthRatio ~ Age + newlifespan + SexEstimate +
+                   BodymassTarsus +  NewRepStatus +
+                   InsectCounts +Tailmoult +
+                   (1 | BirdID) +(1 | BirthYear),        #Cohort
+                 data = feather_nobarbs)
+
+summary(m2l_mod4)
+
+simulateResiduals(m2l_mod4, plot=T)
+tab_model(m2l_mod4, show.se = T,show.df = T, show.est = T,digits = 4)
+tab_model(m2l_fullmod,m2l_mod2,m2l_mod3 , show.se = T,show.df = T, show.est = T,digits = 4)
 
 #Likelihood Ratio Test, to test both models: 
 lrtest(mixed.lmer_MassLengthRatio1, mixed.lmer_MassLengthRatio2)
@@ -706,7 +910,7 @@ lrtest(mixed.lmer_MassLengthRatio1, mixed.lmer_MassLengthRatio2)
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
-vif(mixed.lmer_MassLengthRatio2) #check colinearity > Fine, only high for Age, Age squared and interactions. 
+vif(m2l_mod4) #check colinearity > Fine, only high for Age, Age squared and interactions. 
 
 
 #Plot to check assumptions
@@ -831,8 +1035,6 @@ mixed.lmer_MassLengthRatio2 <- lmer(MassLengthRatio ~
                                       #I(Age^2)*Sex + 
                                       Lifespan +
                                       Sex +
-                                      #BodyMass +
-                                      #RightTarsus +
                                       BodymassTarsus +  
                                       NewRepStatus +
                                       InsectCounts +
@@ -843,20 +1045,24 @@ mixed.lmer_MassLengthRatio2 <- lmer(MassLengthRatio ~
 
 ### Plot overall predictions for the model: 
 # Extract the prediction data frame
-pred.mm2 <- ggpredict(mixed.lmer_MassLengthRatio2, terms = c("Age"))  # this gives overall predictions for the model
+pred.mm2 <- ggpredict(m2l_mod4, terms = c("Age"))  # this gives overall predictions for the model
 
 # Plot the predictions 
 (ggplot(pred.mm2) + 
     geom_line(aes(x = x, y = predicted)) +          # slope
     geom_ribbon(aes(x = x, ymin = predicted - std.error, ymax = predicted + std.error), 
                 fill = "lightgrey", alpha = 0.5) +  # error band
-    geom_point(data = dat2,                      # adding the raw data (scaled values)
-               aes(x = Age, y = MassLengthRatio, colour = Sex)) + 
-    labs(x = "Age", y = "Mass/Length Ratio", 
-         title = "Mass/Length Ratio over Age") + 
-    theme_minimal()
+    geom_point(data = feather_nobarbs,                      # adding the raw data (scaled values)
+               aes(x = Age, y = MassLengthRatio)) + 
+    labs(x = "Age", y = "Mass/Length Ratio") + 
+    theme_cowplot()
 )
 
+
+
+#try something stupid 
+feather_nobarbs$BirdID<-as.factor(feather_nobarbs$BirdID)
+ggplot(feather_nobarbs, aes(x=WidthRachis, y=MassLengthRatio, colour=BirdID))+geom_point()+geom_line()
 
 
 
@@ -869,44 +1075,173 @@ pred.mm2 <- ggpredict(mixed.lmer_MassLengthRatio2, terms = c("Age"))  # this giv
 
 #####===Read data===######
 
-
+library(rptR)
 barbuledata <- read_excel("2024-01-25_Final only barbules.xlsx")
 
+barbuledata<-barbuledata[,-c(1)]
+
+
+femke_barbule_rpt<-read.csv('Femke_repeatability.csv', stringsAsFactors = F)
+femke_barbule2<-read_excel('BarbuleDataSet2_Femke.xlsx')
+
+femke_barbule_rpt<-femke_barbule_rpt%>%
+  mutate(repeats=str_extract(ring, 'repeat'))
+
+femke_barbule_rpt<-femke_barbule_rpt%>%
+  mutate(ring=gsub("repeat: ", '',ring))
+
+femke_barbule_rpt$observer<-'FN'
+
+femke_barbule_rpt<-femke_barbule_rpt[,c(1:3,64:68)]
+
+
+femkerings<-unique(femke_barbule_rpt$ring)
+elrings<-barbuledata$FieldRing
+  
+#observer as fixed effect
+
+elrpt<-filter(barbuledata, barbuledata$FieldRing %in% femkerings)
+elrpt<-elrpt[,c(1,2,7,9,10,34,35,36)]
+elrpt$observer<-'EL'
+elrpt$repeats<-NA
+
+colnames(femke_barbule_rpt)<-c("FieldRing",'OccasionDate','Age','BarbuleSUM_R1',
+                               'BarbuleSUM_R2','TotalBarbuleCount','repeats','observer')
+
+femke_barbule_rpt$OccasionDate<-base::as.Date(femke_barbule_rpt$OccasionDate,'%m/%d/%Y')
+femke_barbule_rpt$BirdID<-''
+femke_barbule_rpt$BirthYear<-''
+bleh<-rbind(elrpt, femke_barbule_rpt)
+birthyear<-unique(elrpt[,c("FieldRing",'BirthYear')])
+
+bleh<-left_join(bleh,birthyear,by="FieldRing")
+bleh$Age<-as.numeric(str_sub(bleh$OccasionDate,1,4))-bleh$BirthYear.y
+
+
+obsrpt<-rpt(TotalBarbuleCount~(1|observer),grname='observer',data=bleh,datatype='Gaussian',
+    nboot=1000,npermut=0)
+obsrpt
+
+
+# Repeatability for observer
+# R  = 0.865
+# SE = 0.312
+# CI = [0, 0.975]
+# P  = 8.81e-21 [LRT]
+# NA [Permutation]
+
+
+birdrpt<-rpt(TotalBarbuleCount~(1|BirdID),grname='BirdID',data=bleh,datatype='Gaussian',
+           nboot=1000,npermut=0)
+birdrpt
+
+
+# Repeatability for BirdID
+# R  = 0.507
+# SE = 0.142
+# CI = [0.173, 0.723]
+# P  = 2.02e-17 [LRT]
+# NA [Permutation]
+
+
+
+#do i have to add any other variables to the repeatability analysis?? 
+
+
+View(dat1)
+barbule<-dat1[,1:165]
 
 #===Convert to right data type=========
-dat4 <- dat3 %>%
-  mutate(
-    BirthDate = as.Date(BirthDate),               # Convert to date
-    OccasionDate = as.Date(OccasionDate),         # Convert to date
-    BodyMass = as.numeric(BodyMass),              # Convert to numeric
-    MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
-    RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
-    WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
-    BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
-    BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
-    SexEstimate = as.factor(SexEstimate)          # Convert to factor
-  )
+# dat4 <- barbuledata %>%
+#   mutate(
+#     BirthDate = as.Date(BirthDate),               # Convert to date
+#     OccasionDate = as.Date(OccasionDate),         # Convert to date
+#     BodyMass = as.numeric(BodyMass),              # Convert to numeric
+#     MassLengthRatio = as.numeric(MassLengthRatio),# Convert to numeric
+#     RightTarsus = as.numeric(RightTarsus),        # Convert to numeric
+#     WidthRachis = as.numeric(WidthRachis),        # Convert to numeric
+#     BarbuleSUM_R1 = as.numeric(BarbuleSUM_R1),    # Convert to numeric
+#     BarbuleSUM_R2 = as.numeric(BarbuleSUM_R2),    # Convert to numeric
+#     SexEstimate = as.factor(SexEstimate)          # Convert to factor
+#   )
+# 
+# 
+# dat4$SexEstimate = ifelse(dat4$SexEstimate==0,"F","M")
+# names(dat4)[18]="Sex"
 
 
-dat4$SexEstimate = ifelse(dat4$SexEstimate==0,"F","M")
-names(dat4)[18]="Sex"
+
+###########
+#check lifespan
+
+check_lifespan<-left_join(barbuledata, lifespan, by='BirdID')
+check<-check_lifespan[c('BirdID',"newlifespan",'Lifespan')]
+
+
+barbuledata<-check_lifespan
+
+
+barbuledata$OccasionDate<-as.Date(barbuledata$OccasionDate, '%Y-%m-%d')
+
+#merge for occasioinID 
+test<-left_join(barbuledata, occasionfp, by=c('BirdID','OccasionDate'))
+
+
+dups<-test%>%group_by(BirdID, OccasionDate)%>%summarise(count=n())
+
+barbuledata<-test
+
+#merge repro status 
+
+
+stat<-left_join(barbuledata, breedstat, by=c('BirdID', 'FieldPeriodID','Island'))
+check<-stat[,c("BirdID", 'FieldPeriodID', 'Status','ReproductiveStatus')]
+check$good<-(check$Status==check$ReproductiveStatus)
+
+#one wrong status 
+
+barbuledata<-stat
+
 
 #=== Set status to dominant, subordinate, helper ===========
-ReproductiveStatus <- dat4$ReproductiveStatus
 
-dat4 <- dat4%>%
-  mutate(NewRepStatus = case_when(ReproductiveStatus == "BrF" ~ "Dom",
-                                  ReproductiveStatus == "BrM" ~ "Dom",
-                                  ReproductiveStatus == "BrU" ~ "Dom",
-                                  ReproductiveStatus == "H" ~ "H"))
+barbuledata <- barbuledata%>%
+  mutate(NewRepStatus = case_when(Status == "BrF" ~ "Dom",
+                                  Status == "BrM" ~ "Dom",
+                                  Status == "BrU" ~ "Dom",
+                                  Status == "H" ~ "H"))
 
-dat4$NewRepStatus[dat4$ReproductiveStatus %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
+barbuledata$NewRepStatus[barbuledata$Status %in% c("U","SEEN1","SEEN2","AB",'ABX','FLOAT','OFL','B')] <- "Sub"
 
-dat4$NewRepStatus #Check whether converted correctly > fine!
-str(dat4$NewRepStatus) #Still 74 values
+barbuledata$NewRepStatus #Check whether converted correctly > fine!
+str(barbuledata$NewRepStatus) #Still 74 values
+
+barbuledata<-barbuledata[,-c(40:168)]
 
 
+#check sex and food avail 
+checksex<-left_join(barbuledata, sex, by="BirdID")
+check<-checksex[,c("BirdID","SexEstimate",'SexEst')]
+check$good<-(check$SexEstimate==check$SexEst)
+#sex is good 
 
+check_bug<-left_join(barbuledata, mean_insect, by='FieldPeriodID')
+check<-check_bug[,c("BirdID","avg_invert",'InsectCounts')]
+check$good<-(check$avg_invert==check$InsectCounts)
+
+#bug all good 
+
+#just the barbs 
+justbarb<-barbuledata[,c("BirdID",'Age','TotalBarbuleCount','BarbuleSUM_R1','BarbuleSUM_R2')]
+
+featherbarb<-feather_withbarbs[,c('BirdID','Age','TotalBarbuleCount','BarbuleSUM_R1','BarbuleSUM_R2')]
+featherbarb<-na.omit(featherbarb)
+featherbarb<-featherbarb%>%
+  filter(TotalBarbuleCount>0)
+
+bla<-left_join(justbarb,featherbarb, by=c('BirdID',"Age"))
+
+#
 
 #===Create data frame==================
 
