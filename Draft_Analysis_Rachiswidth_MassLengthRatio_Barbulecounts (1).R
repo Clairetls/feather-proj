@@ -1241,7 +1241,63 @@ featherbarb<-featherbarb%>%
 
 bla<-left_join(justbarb,featherbarb, by=c('BirdID',"Age"))
 
-#
+
+View(barbuledata)
+
+#######################
+#whittle down barbule dataset 
+barbule_clean<-barbuledata[,c(1,2,7,9,10,12,14,15,16,17,20,34,35,36,50,51,52,54,56,58)]
+barbule_clean$observer<-"EL"
+
+#check and clean femke dataset 
+femke_barbule2<-left_join(femke_barbule2,lifespan, by="BirdID")
+
+
+femke_barbule2$OccasionDate<-as.Date(femke_barbule2$OccasionDate, '%Y-%m-%d')
+
+#merge for occasioinID 
+femke_barbule2<-left_join(femke_barbule2, occasionfp, by=c('BirdID','OccasionDate'))
+
+
+#filling missing FPID in 
+femke_barbule2[54,14]<-176
+femke_barbule2[c(10,11),14]<-184
+femke_barbule2[47,14]<-178
+
+femke_barbule2<-femke_barbule2[-c(33),]  #remove duplicates 
+
+
+
+
+
+
+dups<-test%>%group_by(BirdID, OccasionDate)%>%summarise(count=n())
+
+#NYRX occasiondate 7/6/2021 occasionID 14647 FP176
+#AASX15009. remove 15011
+
+
+
+checkfbug<-left_join(femke_barbule2, mean_insect, by='FieldPeriodID')
+check<-checkfbug[,c("BirdID","avg_invert",'InsectCounts')]
+check$good<-(check$avg_invert==check$InsectCounts)
+
+femke_barbule2
+
+
+#merge el barb with femke barb 
+
+
+
+
+#add observer 
+
+
+
+
+
+
+
 
 #===Create data frame==================
 
@@ -1255,6 +1311,9 @@ hist(dat4$TotalBarbuleCount) ##no weird peaks, fine
 
 
 #===lme for the effect of age on Barbule density============
+
+#observer as fixed effect 
+
 
 
 #Model 1: only body mass
